@@ -6,7 +6,7 @@ import re
 import numpy as np
 from collections import defaultdict
 
-def init_embedding(model, idxvocab):
+def  init_embedding(model, idxvocab):
     word_emb = []
     for vi, v in enumerate(idxvocab):
         if v in model:
@@ -84,7 +84,9 @@ def update_vocab(symbol, idxvocab, vocabxid):
 
 def gen_vocab(dummy_symbols, corpus, stopwords, vocab_minfreq, vocab_maxfreq, verbose):
     idxvocab = []
+    # 词的id
     vocabxid = defaultdict(int)
+    # 词频
     vocab_freq = defaultdict(int)
     for line_id, line in enumerate(codecs.open(corpus, "r", "utf-8")):
         for word in line.strip().split():
@@ -98,6 +100,7 @@ def gen_vocab(dummy_symbols, corpus, stopwords, vocab_minfreq, vocab_maxfreq, ve
         update_vocab(s, idxvocab, vocabxid)
 
     #remove low fequency words
+    # 词频由高到低，越小的id词频越高
     for w, f in sorted(vocab_freq.items(), key=operator.itemgetter(1), reverse=True):
         if f < vocab_minfreq:
             break
@@ -106,17 +109,64 @@ def gen_vocab(dummy_symbols, corpus, stopwords, vocab_minfreq, vocab_maxfreq, ve
 
     #ignore stopwords, frequent words and symbols for the document input for topic model
     stopwords = set([item.strip().lower() for item in open(stopwords)])
-    freqwords = set([item[0] for item in sorted(vocab_freq.items(), key=operator.itemgetter(1), \
-        reverse=True)[:int(float(len(vocab_freq))*vocab_maxfreq)]]) #ignore top N% most frequent words for topic model
+    # ignore top N% most frequent words for topic model
+    freqwords = set(
+        [
+            item[0]
+            for item in sorted(
+                vocab_freq.items(),
+                key=operator.itemgetter(1),
+                reverse=True
+            )[:int(float(len(vocab_freq))*vocab_maxfreq)]
+        ]
+    )
     alpha_check = re.compile("[a-zA-Z]")
-    symbols = set([ w for w in vocabxid.keys() if ((alpha_check.search(w) == None) or w.startswith("'")) ])
+    # 不含字符或者以'作为开头的词作为symbol
+    symbols = set(
+        [
+            w for w in vocabxid.keys()
+            if ((alpha_check.search(w) == None) or w.startswith("'"))
+        ]
+    )
     ignore = stopwords | freqwords | symbols | set(dummy_symbols) | set(["n't"])
+    # 转换成ignore的id
     ignore = set([vocabxid[w] for w in ignore if w in vocabxid])
 
     return idxvocab, vocabxid, ignore
 
 def gen_data(vocabxid, dummy_symbols, ignore, corpus, tm_sent_len, lm_sent_len, verbose, remove_short):
+    # 保存主题模型sent和语言模型的sent，文档id和docs中的文档序号对应
+    # (
+    #   [主题模型，除了<go>之外，不包含其它ignore的词
+    #       (
+    #           文档id,
+    #           序列id,
+    #           序列的内容（例如[<go>,X,X]，上一个序列中最后一个词和下一个序列的第一个词一样，
+    #           序列的长度是tm_sent_len+1）
+    #       )
+    #   ],
+    #   [语言模型的，包含ignore的词
+    #       (
+    #           文档id,
+    #           序列id,
+    #           序列的内容[]（例如[<go>,X,X,<eos>]，句子长度超过lm_sent_len将会被切分成多个序列，
+    #           上一个序列中最后一个词和下一个序列的第一个词一样，序列的长度是lm_sent_len+1）
+    #       )
+    #   ]
+    # )
     sents = ([], []) #tuple of (tm_sents, lm_sents); each element is [(doc_id, seq_id, seq)]
+    # (
+    #   [主题模型，每个元素是一篇文档
+    #       [每个元素是一篇文档中的序列，去掉所有的ignore的词
+    #           序列的内容[]，长度tm_sent_len
+    #       ]
+    #   ],
+    #   [语言模型，每个元素是一篇文档
+    #       [每个元素是一篇文档中的序列，去掉所有的ignore的词
+    #            序列的内容[]，长度最长是lm_sent_len，超过lm_sent_len的句子会被拆成多个句子
+    #       ]
+    #   ]
+    # )
     docs = ([], []) #tuple of (tm_docs, lm_docs); each element is [ [[doc1seq1], [doc2seq2]], [doc2_seqs] ]
     sent_lens = [] #original sentence lengths
     doc_lens = [] #original document lengths
@@ -125,11 +175,14 @@ def gen_data(vocabxid, dummy_symbols, ignore, corpus, tm_sent_len, lm_sent_len, 
     end_symbol = dummy_symbols[2]
     unk_symbol = dummy_symbols[3]
 
+    # 一篇文档
     for line_id, line in enumerate(codecs.open(corpus, "r", "utf-8")):
         tm_sents = [vocabxid[start_symbol]] #sentences for tm
         lm_sents = [] #sentences for lm
+        # 文档中的一句话
         for s in line.strip().split("\t"):
             sent = [vocabxid[start_symbol]]
+            # 一句话中的每个词
             for w in s.strip().split():
                 if w in vocabxid:
                     sent.append(vocabxid[w])
@@ -189,13 +242,29 @@ def print_corpus_stats(name, sents, docs, stats):
     print("\tno. of docs =", len(docs[0]))
     if len(sents[0]) > 0:
         print("\ttopic model no. of sequences =", len(sents[0]))
-        print("\ttopic model no. of tokens =", sum([ len(item[2])-1 for item in sents[0] ]))
+        print(
+            "\ttopic model no. of tokens =",
+            sum(
+                [
+                    len(item[2])-1
+                    for item in sents[0]
+                ]
+            )
+        )
         print("\toriginal doc mean len =", stats[3])
         print("\toriginal doc max len =", stats[4])
         print("\toriginal doc min len =", stats[5])
     if len(sents[1]) > 0:
         print("\tlanguage model no. of sequences =", len(sents[1]))
-        print("\tlanguage model no. of tokens =", sum([ len(item[2])-1 for item in sents[1] ]))
+        print(
+            "\tlanguage model no. of tokens =",
+            sum(
+                [
+                    len(item[2])-1
+                    for item in sents[1]
+                ]
+            )
+        )
         print("\toriginal sent mean len =", stats[0])
         print("\toriginal sent max len =", stats[1])
         print("\toriginal sent min len =", stats[2])

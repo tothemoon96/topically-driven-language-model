@@ -163,6 +163,7 @@ if cf.word_embedding_model:
 
 #first pass to collect vocabulary information
 print("First pass on train corpus to collect vocabulary stats...")
+# tm_ignore代表忽略的符号的id
 idxvocab, vocabxid, tm_ignore = gen_vocab(dummy_symbols, cf.train_corpus, cf.stopwords, cf.vocab_minfreq, \
     cf.vocab_maxfreq, cf.verbose)
 
@@ -220,16 +221,38 @@ with tf.Graph().as_default(), tf.Session() as sess:
     tf.set_random_seed(cf.seed)
     initializer = tf.contrib.layers.xavier_initializer(seed=cf.seed)
     with tf.variable_scope("model", reuse=None, initializer=initializer):
-        tm_train = TM(is_training=True, vocab_size=len(idxvocab), batch_size=cf.batch_size, \
-            num_steps=cf.tm_sent_len, num_classes=num_classes, config=cf) if cf.topic_number > 0 else None
-        lm_train = LM(is_training=True, vocab_size=len(idxvocab), batch_size=cf.batch_size, \
-            num_steps=cf.lm_sent_len, config=cf, reuse_conv_variables=True) \
-            if cf.rnn_hidden_size > 0  else None
+        tm_train = TM(
+            is_training=True,
+            vocab_size=len(idxvocab),
+            batch_size=cf.batch_size,
+            num_steps=cf.tm_sent_len,
+            num_classes=num_classes,
+            config=cf
+        ) if cf.topic_number > 0 else None
+        lm_train = LM(
+            is_training=True,
+            vocab_size=len(idxvocab),
+            batch_size=cf.batch_size,
+            num_steps=cf.lm_sent_len,
+            config=cf,
+            reuse_conv_variables=True
+        ) if cf.rnn_hidden_size > 0  else None
     with tf.variable_scope("model", reuse=True, initializer=initializer):
-        tm_valid = TM(is_training=False, vocab_size=len(idxvocab), batch_size=cf.batch_size, \
-            num_steps=cf.tm_sent_len, num_classes=num_classes, config=cf) if cf.topic_number > 0 else None
-        lm_valid = LM(is_training=False, vocab_size=len(idxvocab), batch_size=cf.batch_size, \
-            num_steps=cf.lm_sent_len, config=cf) if cf.rnn_hidden_size > 0 else None
+        tm_valid = TM(
+            is_training=False,
+            vocab_size=len(idxvocab),
+            batch_size=cf.batch_size,
+            num_steps=cf.tm_sent_len,
+            num_classes=num_classes,
+            config=cf
+        ) if cf.topic_number > 0 else None
+        lm_valid = LM(
+            is_training=False,
+            vocab_size=len(idxvocab),
+            batch_size=cf.batch_size,
+            num_steps=cf.lm_sent_len,
+            config=cf
+        ) if cf.rnn_hidden_size > 0 else None
 
     tf.initialize_all_variables().run()
 

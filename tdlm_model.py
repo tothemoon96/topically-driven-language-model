@@ -15,7 +15,16 @@ else:
 
 #convolutional topic model
 class TopicModel(object):
-    def __init__(self, is_training, vocab_size, batch_size, num_steps, num_classes, config, reuse_conv_variables=None):
+    def __init__(
+            self,
+            is_training,
+            vocab_size,
+            batch_size,
+            num_steps,
+            num_classes,
+            config,
+            reuse_conv_variables=None
+    ):
         self.conv_size = len(config.filter_sizes) * config.filter_number
         self.config = config #save config
 
@@ -29,31 +38,59 @@ class TopicModel(object):
 
         #variables
         with tf.variable_scope("tm_var", reuse=reuse_conv_variables):
-            self.conv_word_embedding = tf.get_variable("conv_embedding", [vocab_size, config.word_embedding_size], \
-                trainable=config.word_embedding_update, \
-                initializer=tf.random_uniform_initializer(-0.5/config.word_embedding_size, \
-                0.5/config.word_embedding_size))
-            self.topic_output_embedding = tf.get_variable("topic_output_embedding", \
-                [config.topic_number, config.topic_embedding_size])
-            self.topic_input_embedding = tf.get_variable("topic_input_embedding", \
-                [config.topic_number, self.conv_size+config.tag_embedding_size])
-            self.tm_softmax_w = tf.get_variable("tm_softmax_w", [config.topic_embedding_size, vocab_size])
+            # TopicModel的word embedding
+            self.conv_word_embedding = tf.get_variable(
+                "conv_embedding",
+                [vocab_size, config.word_embedding_size],
+                trainable=config.word_embedding_update,
+                initializer=tf.random_uniform_initializer(-0.5/config.word_embedding_size, 0.5/config.word_embedding_size)
+            )
+            # 对应文中的B
+            self.topic_output_embedding = tf.get_variable(
+                "topic_output_embedding",
+                [config.topic_number, config.topic_embedding_size]
+            )
+            # 对应文中的A
+            self.topic_input_embedding = tf.get_variable(
+                "topic_input_embedding",
+                [config.topic_number, self.conv_size+config.tag_embedding_size]
+            )
+            self.tm_softmax_w = tf.get_variable(
+                "tm_softmax_w",
+                [config.topic_embedding_size, vocab_size]
+            )
             if is_training and config.num_samples > 0:
                 self.tm_softmax_w_t = tf.transpose(self.tm_softmax_w)
-            self.tm_softmax_b = tf.get_variable("tm_softmax_b", [vocab_size], initializer=tf.constant_initializer())
+            self.tm_softmax_b = tf.get_variable(
+                "tm_softmax_b",
+                [vocab_size],
+                initializer=tf.constant_initializer()
+            )
             self.eye = tf.constant(np.eye(config.topic_number), dtype=tf.float32)
             if num_classes > 0:
-                self.sup_softmax_w = tf.get_variable("sup_softmax_w", \
-                    [config.topic_embedding_size+self.conv_size+config.tag_embedding_size, num_classes])
-                self.sup_softmax_b = tf.get_variable("sup_softmax_b", [num_classes], \
-                    initializer=tf.constant_initializer())
+                self.sup_softmax_w = tf.get_variable(
+                    "sup_softmax_w",
+                    [config.topic_embedding_size+self.conv_size+config.tag_embedding_size, num_classes]
+                )
+                self.sup_softmax_b = tf.get_variable(
+                    "sup_softmax_b",
+                    [num_classes],
+                    initializer=tf.constant_initializer()
+                )
             if config.num_tags > 0:
-                self.tag_embedding = tf.get_variable("tag_embedding", [config.num_tags, config.tag_embedding_size], \
-                    initializer=tf.random_uniform_initializer(-0.001, 0.001))
+                self.tag_embedding = tf.get_variable(
+                    "tag_embedding",
+                    [config.num_tags, config.tag_embedding_size],
+                    initializer=tf.random_uniform_initializer(-0.001, 0.001)
+                )
                 
 
         #get document embedding
-        doc_inputs = tf.nn.embedding_lookup(self.conv_word_embedding, self.doc)
+        # [batch_size,doc_len,word_embedding_size,1]
+        doc_inputs = tf.nn.embedding_lookup(
+            self.conv_word_embedding,
+            self.doc
+        )
         if is_training and config.tm_keep_prob < 1.0:
             doc_inputs = tf.nn.dropout(doc_inputs, config.tm_keep_prob, seed=config.seed)
         doc_inputs = tf.expand_dims(doc_inputs, -1)
@@ -62,24 +99,42 @@ class TopicModel(object):
         pooled_outputs = []
         for i, filter_size in enumerate(config.filter_sizes):
             with tf.variable_scope("tm_var/conv-filter-%d" % filter_size, reuse=reuse_conv_variables):
-                filter_w = tf.get_variable("filter_w", \
-                    [filter_size, config.word_embedding_size, 1, config.filter_number], \
-                    initializer=tf.truncated_normal_initializer(stddev=0.1))
-                filter_b = tf.get_variable("filter_b", [config.filter_number], \
-                    initializer=tf.constant_initializer())
-                conv = tf.nn.conv2d(doc_inputs, filter_w, strides=[1,1,1,1], padding="VALID")
+                # filter_size指的是窗口大小包括多少个词
+                # filter_number是指这个当前窗口大小的卷积核一共有多少个
+                filter_w = tf.get_variable(
+                    "filter_w",
+                    [filter_size, config.word_embedding_size, 1, config.filter_number],
+                    initializer=tf.truncated_normal_initializer(stddev=0.1)
+                )
+                filter_b = tf.get_variable(
+                    "filter_b",
+                    [config.filter_number],
+                    initializer=tf.constant_initializer()
+                )
+                # [batch_size,doc_len-filter_size+1,1,filter_number]
+                conv = tf.nn.conv2d(
+                    doc_inputs,
+                    filter_w,
+                    strides=[1,1,1,1],
+                    padding="VALID"
+                )
                 if config.conv_activation == "identity":
                     conv_activated = tf.nn.bias_add(conv, filter_b)
                 elif config.conv_activation == "relu":
                     conv_activated = tf.nn.relu(tf.nn.bias_add(conv, filter_b))
 
                 #max pooling over time steps
-                h = tf.nn.max_pool(conv_activated, \
-                    ksize=[1,(config.doc_len-filter_size+1),1,1], strides=[1,1,1,1], padding="VALID")
+                h = tf.nn.max_pool(
+                    conv_activated,
+                    ksize=[1,(config.doc_len-filter_size+1),1,1],
+                    strides=[1,1,1,1],
+                    padding="VALID"
+                )
                 pooled_outputs.append(h)
 
         #concat the pooled features
         conv_pooled = tf.concat(3, pooled_outputs)
+        # [batch_size,conv_size]
         conv_pooled = tf.reshape(conv_pooled, [-1, self.conv_size])
 
         #if there are tags, compute sum embedding and concat it with conv_pooled
@@ -90,10 +145,22 @@ class TopicModel(object):
             conv_pooled = tf.concat(1, [conv_pooled, tag_emb_m])
 
         #get the softmax attention weights and compute mean topic vector
-        self.attention = tf.nn.softmax(tf.reduce_sum(tf.mul(tf.expand_dims(self.topic_input_embedding, 0), \
-            tf.expand_dims(conv_pooled, 1)), 2))
-        self.mean_topic = tf.reduce_sum(tf.mul(tf.expand_dims(self.attention, 2), \
-            tf.expand_dims(self.topic_output_embedding, 0)),1)
+        # [batch_size,topic_number]
+        self.attention = tf.nn.softmax(
+            tf.reduce_sum(
+                tf.mul(
+                    tf.expand_dims(self.topic_input_embedding, 0),
+                    tf.expand_dims(conv_pooled, 1)
+                ), 2
+            )
+        )
+        # [batch_size,topic_embedding_size]
+        self.mean_topic = tf.reduce_sum(
+            tf.mul(
+                tf.expand_dims(self.attention, 2),
+                tf.expand_dims(self.topic_output_embedding, 0)
+            ),1
+        )
         if is_training and config.tm_keep_prob < 1.0:
             self.mean_topic_dropped = tf.nn.dropout(self.mean_topic, config.tm_keep_prob, seed=config.seed)
         else:
@@ -101,16 +168,34 @@ class TopicModel(object):
 
         #reshape mean_topic from [batch_size,config.topic_embedding_size] to 
         #[batch_size*sent_len,config.topic_embedding_size]
-        self.conv_hidden = tf.reshape(tf.tile(self.mean_topic_dropped, [1, num_steps]), \
-            [batch_size*num_steps, config.topic_embedding_size])
+        self.conv_hidden = tf.reshape(
+            tf.tile(
+                self.mean_topic_dropped,
+                [1, num_steps]
+            ), [batch_size*num_steps, config.topic_embedding_size]
+        )
 
         #compute masked/weighted crossent and mean topic model loss
         if is_training and config.num_samples > 0:
-            tm_crossent = tf.nn.sampled_softmax_loss(self.tm_softmax_w_t, self.tm_softmax_b, self.conv_hidden, \
-                tf.reshape(self.y, [-1,1]), config.num_samples, vocab_size)
+            # 将y的维度转换到[batch_size*num_steps,1]
+            tm_crossent = tf.nn.sampled_softmax_loss(
+                self.tm_softmax_w_t,
+                self.tm_softmax_b,
+                self.conv_hidden,
+                tf.reshape(self.y, [-1,1]),
+                config.num_samples,
+                vocab_size
+            )
         else:
-            self.tm_logits = tf.matmul(self.conv_hidden, self.tm_softmax_w) + self.tm_softmax_b
-            tm_crossent = tf.nn.sparse_softmax_cross_entropy_with_logits(self.tm_logits, tf.reshape(self.y, [-1]))
+            self.tm_logits = tf.matmul(
+                self.conv_hidden,
+                self.tm_softmax_w
+            ) + self.tm_softmax_b
+            tm_crossent = tf.nn.sparse_softmax_cross_entropy_with_logits(
+                self.tm_logits,
+                tf.reshape(self.y, [-1])
+            )
+        # [batch_size*num_steps]
         tm_crossent_m = tm_crossent * tf.reshape(self.tm_mask, [-1])
         self.tm_cost = tf.reduce_sum(tm_crossent_m) / batch_size
 
@@ -127,9 +212,24 @@ class TopicModel(object):
             return
 
         #topic uniqueness loss
-        topicnorm = self.topic_output_embedding / tf.sqrt(tf.reduce_sum(tf.square(self.topic_output_embedding),1, \
-            keep_dims=True))
-        uniqueness = tf.reduce_max(tf.square(tf.matmul(topicnorm, tf.transpose(topicnorm)) - self.eye))
+        # 对主题嵌入矩阵进行归一化
+        # [topic_number,topic_embedding_size]
+        topicnorm = self.topic_output_embedding / tf.sqrt(
+            tf.reduce_sum(
+                tf.square(self.topic_output_embedding),
+                1,
+                keep_dims=True
+            )
+        )
+        # 计算各个主题之间的相关性，想办法让主题之间的相关性变小，这个值越小越好
+        uniqueness = tf.reduce_max(
+            tf.square(
+                tf.matmul(
+                    topicnorm,
+                    tf.transpose(topicnorm)
+                ) - self.eye
+            )
+        )
         self.tm_cost += config.alpha * uniqueness
 
         #entropy = tf.reduce_mean(tf.reduce_sum(-tf.log(tf.maximum(self.attention, 1e-3))*(self.attention),1))
@@ -167,7 +267,15 @@ class TopicModel(object):
 
 #convolutional topic model + lstm language model
 class LanguageModel(TopicModel):
-    def __init__(self, is_training, vocab_size, batch_size, num_steps, config, reuse_conv_variables=None):
+    def __init__(
+            self,
+            is_training,
+            vocab_size,
+            batch_size,
+            num_steps,
+            config,
+            reuse_conv_variables=None
+    ):
         if config.topic_number > 0:
             TopicModel.__init__(self, is_training, vocab_size, batch_size, num_steps, 0, config, reuse_conv_variables)
         else:
@@ -179,36 +287,70 @@ class LanguageModel(TopicModel):
         self.lm_mask = tf.placeholder(tf.float32, [None, num_steps])
 
         #variables
-        self.lstm_word_embedding = tf.get_variable("lstm_embedding", [vocab_size, config.word_embedding_size], \
-            trainable=config.word_embedding_update, \
-            initializer=tf.random_uniform_initializer(-0.5/config.word_embedding_size, 0.5/config.word_embedding_size))
-        self.lm_softmax_w = tf.get_variable("lm_softmax_w", [config.rnn_hidden_size, vocab_size])
+        self.lstm_word_embedding = tf.get_variable(
+            "lstm_embedding",
+            [vocab_size, config.word_embedding_size],
+            trainable=config.word_embedding_update,
+            initializer=tf.random_uniform_initializer(-0.5/config.word_embedding_size, 0.5/config.word_embedding_size)
+        )
+        self.lm_softmax_w = tf.get_variable(
+            "lm_softmax_w",
+            [config.rnn_hidden_size, vocab_size]
+        )
         if is_training and config.num_samples > 0:
             self.lm_softmax_w_t = tf.transpose(self.lm_softmax_w)
-        self.lm_softmax_b = tf.get_variable("lm_softmax_b", [vocab_size], initializer=tf.constant_initializer())
+        self.lm_softmax_b = tf.get_variable(
+            "lm_softmax_b",
+            [vocab_size],
+            initializer=tf.constant_initializer()
+        )
         if config.topic_number > 0:
-            self.gate_w = tf.get_variable("gate_w", [config.topic_embedding_size, config.rnn_hidden_size])
-            self.gate_u = tf.get_variable("gate_u", [config.rnn_hidden_size, config.rnn_hidden_size])
-            self.gate_b = tf.get_variable("gate_b", [config.rnn_hidden_size], initializer=tf.constant_initializer())
+            self.gate_w = tf.get_variable(
+                "gate_w",
+                [config.topic_embedding_size, config.rnn_hidden_size]
+            )
+            self.gate_u = tf.get_variable(
+                "gate_u",
+                [config.rnn_hidden_size, config.rnn_hidden_size]
+            )
+            self.gate_b = tf.get_variable(
+                "gate_b",
+                [config.rnn_hidden_size],
+                initializer=tf.constant_initializer()
+            )
 
         #define lstm cells
-        lstm_cell = tf.nn.rnn_cell.BasicLSTMCell(config.rnn_hidden_size, forget_bias=1.0)
+        lstm_cell = tf.nn.rnn_cell.BasicLSTMCell(
+            config.rnn_hidden_size,
+            forget_bias=1.0
+        )
         if is_training and config.lm_keep_prob < 1.0:
-            lstm_cell = tf.nn.rnn_cell.DropoutWrapper(lstm_cell, output_keep_prob=config.lm_keep_prob, seed=config.seed)
-        self.cell = tf.nn.rnn_cell.MultiRNNCell([lstm_cell] * config.rnn_layer_size)
+            lstm_cell = tf.nn.rnn_cell.DropoutWrapper(
+                lstm_cell,
+                output_keep_prob=config.lm_keep_prob,
+                seed=config.seed
+            )
+        self.cell = tf.nn.rnn_cell.MultiRNNCell(
+            [lstm_cell] * config.rnn_layer_size
+        )
 
         #set initial state to all zeros
         self.initial_state = self.cell.zero_state(batch_size, tf.float32)
 
         #embedding lookup
+        # [batch_size,num_steps,word_embedding_size]
         inputs = tf.nn.embedding_lookup(self.lstm_word_embedding, self.x)
         if is_training and config.lm_keep_prob < 1.0:
             inputs = tf.nn.dropout(inputs, config.lm_keep_prob, seed=config.seed)
 
         #transform input from [batch_size,sent_len,emb_size] to [sent_len,batch_size,emb_size ]
+        # input_:[batch_size,1,word_embedding_size]
+        # input:[num_steps,batch_size,word_embedding_size]
         inputs = [tf.squeeze(input_, [1]) for input_ in tf.split(1, num_steps, inputs)]
 
         #run rnn and get outputs (hidden layer)
+        # outputs:[num_steps,batch_size,rnn_hidden_size]
+        # self.state:rnn最终状态，(c,h)
         outputs, self.state = tf.nn.rnn(self.cell, inputs, initial_state=self.initial_state)
 
         #reshape output into [sent_len,batch_size,hidden_size] and then into [batch_size*sent_len,hidden_size]
@@ -216,22 +358,41 @@ class LanguageModel(TopicModel):
 
         if config.topic_number > 0:
             #combine topic and language model hidden with a gating unit
-            z, r = array_ops.split(1, 2, linear([self.conv_hidden, lstm_hidden], \
-                2 * config.rnn_hidden_size, True, 1.0))
+            # linear返回：[batch_size*num_steps,2*rnn_hidden_size]
+            # z,r:[batch_size*num_steps,rnn_hidden_size]
+            z, r = array_ops.split(
+                1,
+                2,
+                linear(
+                    [self.conv_hidden, lstm_hidden],
+                    2 * config.rnn_hidden_size,
+                    True,
+                    1.0
+                )
+            )
             z, r = tf.sigmoid(z), tf.sigmoid(r)
             c = tf.tanh(tf.matmul(self.conv_hidden, self.gate_w) + tf.matmul((r * lstm_hidden), self.gate_u) + \
                 self.gate_b)
             hidden = (1-z)*lstm_hidden + z*c
             
             #save z
-            self.tm_weights = tf.reshape(tf.reduce_mean(z, 1), [-1, num_steps])
+            # [batch_size,num_steps]
+            self.tm_weights = tf.reshape(
+                tf.reduce_mean(z, 1), [-1, num_steps]
+            )
         else:
             hidden = lstm_hidden
 
         #compute masked/weighted crossent and mean language model loss
         if is_training and config.num_samples > 0:
-            lm_crossent = tf.nn.sampled_softmax_loss(self.lm_softmax_w_t, self.lm_softmax_b, hidden, \
-                tf.reshape(self.y, [-1,1]), config.num_samples, vocab_size)
+            lm_crossent = tf.nn.sampled_softmax_loss(
+                self.lm_softmax_w_t,
+                self.lm_softmax_b,
+                hidden,
+                tf.reshape(self.y, [-1,1]),
+                config.num_samples,
+                vocab_size
+            )
         else:
             lm_logits = tf.matmul(hidden, self.lm_softmax_w) + self.lm_softmax_b
             lm_crossent = tf.nn.sparse_softmax_cross_entropy_with_logits(lm_logits, tf.reshape(self.y, [-1]))
