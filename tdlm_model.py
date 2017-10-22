@@ -29,8 +29,10 @@ class TopicModel(object):
         self.config = config #save config
 
         #placeholders
+        # 要预测的词
         self.y = tf.placeholder(tf.int32, [None, num_steps])
         self.tm_mask = tf.placeholder(tf.float32, [None, num_steps])
+        # 模型的输入
         self.doc = tf.placeholder(tf.int32, [None, config.doc_len])
         self.label = tf.placeholder(tf.int32, [None])
         self.sup_mask = tf.placeholder(tf.float32, [None])
@@ -135,6 +137,7 @@ class TopicModel(object):
         #concat the pooled features
         conv_pooled = tf.concat(3, pooled_outputs)
         # [batch_size,conv_size]
+        # 对应文中的s
         conv_pooled = tf.reshape(conv_pooled, [-1, self.conv_size])
 
         #if there are tags, compute sum embedding and concat it with conv_pooled
@@ -168,6 +171,7 @@ class TopicModel(object):
 
         #reshape mean_topic from [batch_size,config.topic_embedding_size] to 
         #[batch_size*sent_len,config.topic_embedding_size]
+        # 对应文中的s
         self.conv_hidden = tf.reshape(
             tf.tile(
                 self.mean_topic_dropped,

@@ -47,20 +47,36 @@ dummy_symbols = [pad_symbol, start_symbol, end_symbol, unk_symbol]
 def fetch_batch_and_train(sents, docs, tags, model, seq_len, i, p1, p2):
     (tm_costs, tm_words, lm_costs, lm_words) = p1
     (m_tm_cost, m_tm_train, m_lm_cost, m_lm_train) = p2
-    x, y, m, d, t = get_batch(sents, docs, tags, i, cf.doc_len, seq_len, cf.tag_len, cf.batch_size, 0, \
-        (True if isinstance(model, LM) else False))
+    x, y, m, d, t = get_batch(
+        sents,
+        docs,
+        tags,
+        i,
+        cf.doc_len,
+        seq_len,
+        cf.tag_len,
+        cf.batch_size,
+        0,
+        (True if isinstance(model, LM) else False) #当训练topic model，doc中有当前seq，反之则没有
+    )
 
     if isinstance(model, LM):
         if cf.topic_number > 0:
-            tm_cost, _, lm_cost, _ = sess.run([m_tm_cost, m_tm_train, m_lm_cost, m_lm_train], \
-                {model.x: x, model.y: y, model.lm_mask: m, model.doc: d, model.tag: t})
+            tm_cost, _, lm_cost, _ = sess.run(
+                [m_tm_cost, m_tm_train, m_lm_cost, m_lm_train],
+                {model.x: x, model.y: y, model.lm_mask: m, model.doc: d, model.tag: t}
+            )
         else:
             #pure lstm
-            tm_cost, _, lm_cost, _ = sess.run([m_tm_cost, m_tm_train, m_lm_cost, m_lm_train], \
-                {model.x: x, model.y: y, model.lm_mask: m})
+            tm_cost, _, lm_cost, _ = sess.run(
+                [m_tm_cost, m_tm_train, m_lm_cost, m_lm_train],
+                {model.x: x, model.y: y, model.lm_mask: m}
+            )
     else:
-        tm_cost, _, lm_cost, _ = sess.run([m_tm_cost, m_tm_train, m_lm_cost, m_lm_train], \
-            {model.y: y, model.tm_mask: m, model.doc: d, model.tag: t})
+        tm_cost, _, lm_cost, _ = sess.run(
+            [m_tm_cost, m_tm_train, m_lm_cost, m_lm_train],
+            {model.y: y, model.tm_mask: m, model.doc: d, model.tag: t}
+        )
 
     if tm_cost != None:
         tm_costs += tm_cost * cf.batch_size #keep track of full batch loss (not per example batch loss)
@@ -76,29 +92,53 @@ def run_epoch(sents, docs, labels, tags, models, is_training):
     ####unsupervised topic and language model training####
 
     #generate the batches
-    tm_num_batches, lm_num_batches = int(math.ceil(float(len(sents[0]))/cf.batch_size)), \
+    tm_num_batches, lm_num_batches = \
+        int(math.ceil(float(len(sents[0]))/cf.batch_size)), \
         int(math.ceil(float(len(sents[1]))/cf.batch_size))
-    batch_ids = list([ (item, 0) for item in range(tm_num_batches) ] + [ (item, 1) for item in range(lm_num_batches) ])
+    batch_ids = \
+        list([ (item, 0) for item in range(tm_num_batches) ] +
+             [ (item, 1) for item in range(lm_num_batches) ])
     seq_lens = (cf.tm_sent_len, cf.lm_sent_len)
     #shuffle batches and sentences
+    # 选择不同的模型进行训练
     random.shuffle(batch_ids)
+    # 随机topic model的batch
     random.shuffle(sents[0])
+    # 随机language model的batch
     random.shuffle(sents[1])
 
     #set training and cost ops for topic and language model training
     tm_cost_ops = (tf.no_op(), tf.no_op(), tf.no_op(), tf.no_op())
     lm_cost_ops = (tf.no_op(), tf.no_op(), tf.no_op(), tf.no_op())
     if models[0] != None:
-        tm_cost_ops = (models[0].tm_cost, (models[0].tm_train_op if is_training else tf.no_op()), tf.no_op(), tf.no_op())
+        tm_cost_ops = (
+            models[0].tm_cost,
+            (models[0].tm_train_op if is_training else tf.no_op()),
+            tf.no_op(),
+            tf.no_op()
+        )
     if models[1] != None:
-        lm_cost_ops = (tf.no_op(), tf.no_op(), models[1].lm_cost, (models[1].lm_train_op if is_training else tf.no_op()))
+        lm_cost_ops = (
+            tf.no_op(),
+            tf.no_op(),
+            models[1].lm_cost,
+            (models[1].lm_train_op if is_training else tf.no_op())
+        )
     cost_ops = (tm_cost_ops, lm_cost_ops)
 
     start_time = time.time()
     lm_costs, tm_costs, lm_words, tm_words = 0.0, 0.0, 0.0, 0.0
     for bi, (b, model_id) in enumerate(batch_ids):
-        tm_costs, tm_words, lm_costs, lm_words = fetch_batch_and_train(sents[model_id], docs[model_id], tags, \
-            models[model_id], seq_lens[model_id], b, (tm_costs, tm_words, lm_costs, lm_words), cost_ops[model_id])
+        tm_costs, tm_words, lm_costs, lm_words = fetch_batch_and_train(
+            sents[model_id],
+            docs[model_id],
+            tags,
+            models[model_id],
+            seq_lens[model_id],
+            b,
+            (tm_costs, tm_words, lm_costs, lm_words),
+            cost_ops[model_id]
+        )
 
         #print progress
         output_string = "%d/%d: tm ppl = %.3f; lm ppl = %.3f; word/sec = %.1f" % \
@@ -116,10 +156,22 @@ def run_epoch(sents, docs, labels, tags, models, is_training):
         start_time = time.time()
         costs, accs = 0.0, []
         for bi, b in enumerate(batch_ids):
-            d, y, m, t, num_docs = get_batch_doc(docs[0], labels, tags, b, cf.doc_len, cf.tag_len, cf.batch_size, 0)
-            cost, prob, _ = sess.run([models[0].sup_cost, models[0].sup_probs, \
-                (models[0].sup_train_op if is_training else tf.no_op())], \
-                {models[0].doc:d, models[0].label:y, models[0].sup_mask: m, models[0].tag: t})
+            d, y, m, t, num_docs = get_batch_doc(
+                docs[0],
+                labels,
+                tags,
+                b,
+                cf.doc_len,
+                cf.tag_len,
+                cf.batch_size,
+                0
+            )
+            cost, prob, _ = sess.run(
+                [models[0].sup_cost,
+                 models[0].sup_probs,
+                 (models[0].sup_train_op if is_training else tf.no_op())],
+                {models[0].doc:d, models[0].label:y, models[0].sup_mask: m, models[0].tag: t}
+            )
             costs += cost * cf.batch_size #keep track of full cost
             pred = np.argmax(prob, axis=1)
             accs.extend(pred[:num_docs] == y[:num_docs])
@@ -276,7 +328,14 @@ with tf.Graph().as_default(), tf.Session() as sess:
     for i in range(cf.epoch_size):
         print("\nEpoch =", i)
         #run a train epoch
-        run_epoch(train_sents, train_docs, train_labels, train_tags, (tm_train, lm_train), True)
+        run_epoch(
+            train_sents,
+            train_docs,
+            train_labels,
+            train_tags,
+            (tm_train, lm_train),
+            True
+        )
         #run a valid epoch
         curr_ppl = run_epoch(valid_sents, valid_docs, valid_labels, valid_tags, (tm_valid, lm_valid), False)
     
