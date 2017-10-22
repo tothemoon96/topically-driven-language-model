@@ -250,7 +250,14 @@ class TopicModel(object):
     def get_topics(self, sess, topn):
         topics = []
         entropy = []
-        tw_dist = sess.run(tf.nn.softmax(tf.matmul(self.topic_output_embedding, self.tm_softmax_w) + self.tm_softmax_b))
+        tw_dist = sess.run(
+            tf.nn.softmax(
+                tf.matmul(
+                    self.topic_output_embedding,
+                    self.tm_softmax_w
+                ) + self.tm_softmax_b
+            )
+        )
         for ti in range(self.config.topic_number):
             best = matutils.argsort(tw_dist[ti], topn=topn, reverse=True)
             topics.append(best)
@@ -433,8 +440,10 @@ class LanguageModel(TopicModel):
         for _ in range(max_length):
             if type(conv_hidden) is np.ndarray:
             #if conv_hidden != None:
-                probs, state = sess.run([self.probs, self.state], \
-                    {self.x: x, self.initial_state: state, self.conv_hidden: conv_hidden})
+                probs, state = sess.run(
+                    [self.probs, self.state],
+                    {self.x: x, self.initial_state: state, self.conv_hidden: conv_hidden}
+                )
             else:
                 probs, state = sess.run([self.probs, self.state], \
                     {self.x: x, self.initial_state: state})
@@ -446,9 +455,24 @@ class LanguageModel(TopicModel):
         return sent
 
     #generate a sequence of words, given a topic
-    def generate_on_topic(self, sess, topic_id, start_word_id, temperature=1.0, max_length=30, stop_word_id=None): 
+    def generate_on_topic(
+            self,
+            sess,
+            topic_id,
+            start_word_id,
+            temperature=1.0,
+            max_length=30,
+            stop_word_id=None
+    ):
         if topic_id != -1:
-            topic_emb = sess.run(tf.expand_dims(tf.nn.embedding_lookup(self.topic_output_embedding, topic_id), 0))
+            topic_emb = sess.run(
+                tf.expand_dims(
+                    tf.nn.embedding_lookup(
+                        self.topic_output_embedding,
+                        topic_id
+                    ), 0
+                )
+            )
         else:
             topic_emb = None
         return self.generate(sess, topic_emb, start_word_id, temperature, max_length, stop_word_id)

@@ -141,9 +141,15 @@ def run_epoch(sents, docs, labels, tags, models, is_training):
         )
 
         #print progress
-        output_string = "%d/%d: tm ppl = %.3f; lm ppl = %.3f; word/sec = %.1f" % \
-            (bi+1, len(batch_ids), np.exp(tm_costs/max(tm_words, 1.0)), np.exp(lm_costs/max(lm_words, 1.0)),  \
-            float(tm_words + lm_words)/(time.time()-start_time))
+        output_string = \
+            "%d/%d: tm ppl = %.3f; lm ppl = %.3f; word/sec = %.1f" % \
+            (
+                bi+1,
+                len(batch_ids),
+                np.exp(tm_costs/max(tm_words, 1.0)),
+                np.exp(lm_costs/max(lm_words, 1.0)),
+                float(tm_words + lm_words)/(time.time()-start_time)
+            )
         print_progress(bi, len(batch_ids), is_training, output_string)
 
     ####supervised classification training####
@@ -177,9 +183,15 @@ def run_epoch(sents, docs, labels, tags, models, is_training):
             accs.extend(pred[:num_docs] == y[:num_docs])
 
             #print progress
-            output_string = "%d/%d: sup loss = %.3f; sup acc = %.3f; doc/sec = %.1f" % \
-                (bi+1, len(batch_ids), costs/((bi+1)*cf.batch_size), np.mean(accs), \
-                (bi+1)*cf.batch_size/(time.time()-start_time))
+            output_string = \
+                "%d/%d: sup loss = %.3f; sup acc = %.3f; doc/sec = %.1f" % \
+                (
+                    bi+1,
+                    len(batch_ids),
+                    costs/((bi+1)*cf.batch_size),
+                    np.mean(accs),
+                    (bi+1)*cf.batch_size/(time.time()-start_time)
+                )
             print_progress(bi, len(batch_ids), is_training, output_string)
     else:
         accs = None
@@ -337,7 +349,14 @@ with tf.Graph().as_default(), tf.Session() as sess:
             True
         )
         #run a valid epoch
-        curr_ppl = run_epoch(valid_sents, valid_docs, valid_labels, valid_tags, (tm_valid, lm_valid), False)
+        curr_ppl = run_epoch(
+            valid_sents,
+            valid_docs,
+            valid_labels,
+            valid_tags,
+            (tm_valid, lm_valid),
+            False
+        )
     
         if cf.save_model:
             if (i < 5) or (prev_ppl == None) or (curr_ppl < prev_ppl):
@@ -352,14 +371,27 @@ with tf.Graph().as_default(), tf.Session() as sess:
         print("\nTopics\n======")
         topics, entropy = tm_train.get_topics(sess, topn=20)
         for ti, t in enumerate(topics):
-            print("Topic", ti, "[", ("%.2f" % entropy[ti]), "] :", " ".join([ idxvocab[item] for item in t ]))
+            print(
+                "Topic",
+                ti,
+                "[",
+                ("%.2f" % entropy[ti]),
+                "] :",
+                " ".join([ idxvocab[item] for item in t ])
+            )
 
     #generate some random sentences
     if cf.rnn_hidden_size > 0:
         print("\nRandom Generated Sentences\n==========================")
         with tf.variable_scope("model", reuse=True, initializer=initializer):
-            mgen = LM(is_training=False, vocab_size=len(idxvocab), batch_size=1, num_steps=1, config=cf, \
-                reuse_conv_variables=True)
+            mgen = LM(
+                is_training=False,
+                vocab_size=len(idxvocab),
+                batch_size=1,
+                num_steps=1,
+                config=cf,
+                reuse_conv_variables=True
+            )
         for temp in [1.0, 0.75, 0.5]:
             print("\nTemperature =", temp)
             for _ in range(10):
@@ -371,16 +403,27 @@ with tf.Graph().as_default(), tf.Session() as sess:
                     topic = -1
                     print("\t",)
 
-                s = mgen.generate_on_topic(sess, topic, vocabxid[start_symbol], temp, cf.lm_sent_len+10, \
-                    vocabxid[end_symbol])
-                s = [ idxvocab[item] for item in s ]
+                s = mgen.generate_on_topic(
+                    sess,
+                    topic,
+                    vocabxid[start_symbol],
+                    temp,
+                    cf.lm_sent_len+10,
+                    vocabxid[end_symbol]
+                )
+                s = [
+                    idxvocab[item]
+                    for item in s
+                ]
                 print(" ".join(s))
 
     #save model vocab and configurations
     if cf.save_model:
         #vocabulary information
-        pickle.dump((idxvocab, tm_ignore, dummy_symbols), \
-            open(os.path.join(cf.output_dir, cf.output_prefix, "vocab.pickle"), "wb"))
+        pickle.dump(
+            (idxvocab, tm_ignore, dummy_symbols),
+            open(os.path.join(cf.output_dir, cf.output_prefix, "vocab.pickle"), "wb")
+        )
 
         #tag information
         if len(tagxid) > 0:
