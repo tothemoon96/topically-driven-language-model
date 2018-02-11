@@ -1,12 +1,13 @@
 # Requirements
-- python3.5
+- python2.7 (development python3 code available in python3 branch; code still requires testing)
 - gensim: pip install gensim
 - tensorflow 0.12
 
-# Data format
+# Data Format
 - One line per document
 - Sentences are delimited by tabs in each document
 - See examples in data/
+- [ACL2017 Paper dataset (AP News, BNC and IMDB)](https://ibm.box.com/s/ls61p8ovc1y87w45oa02zink2zl7l6z4)
 
 # Running the code (example.sh)
 
@@ -76,4 +77,4 @@ optional arguments:
 
 # Publication
 
-Lau, Jey Han, Timothy Baldwin and Trevor Cohn (to appear) [Topically Driven Neural Language Model](https://arxiv.org/abs/1704.08012). In Proceedings of the 55th Annual Meeting of the Association for Computational Linguistics (ACL 2017), Vancouver, Canada.
+Lau, Jey Han, Timothy Baldwin and Trevor Cohn (2017). [Topically Driven Neural Language Model](http://aclweb.org/anthology/P/P17/P17-1033.pdf). In Proceedings of the 55th Annual Meeting of the Association for Computational Linguistics (ACL 2017), Vancouver, Canada, pp. 355--365.
